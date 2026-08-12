@@ -56,21 +56,31 @@ app.post('/generate-avatar-art', async (req, res) => {
             }
         });
 
-        // 🚀 هنا التعديل: استخراج المعرف الفعلي للمجسم (assetItemId) أو المعرف العام (assetId) وضمان إرسالهما
-        const rawAssetId = uploadRes.data.assetId;
-        const assetItemId = uploadRes.data.assetItemId ? uploadRes.data.assetItemId.replace("AssetItems/", "") : rawAssetId;
-
-        res.json({ 
-            success: true, 
-            assetId: assetItemId // نرسل الـ Item ID هنا مباشرة ليتعرف عليه سكربت الاستوديو فوراً
-        });
+        // فحص دقيق للبيانات الراجعة من روبلوكس لمنع الـ Unknown Error
+        if (uploadRes.data && (uploadRes.data.assetId || uploadRes.data.assetItemId)) {
+            const rawAssetId = uploadRes.data.assetId;
+            const assetItemId = uploadRes.data.assetItemId ? uploadRes.data.assetItemId.replace("AssetItems/", "") : rawAssetId;
+            
+            return res.json({ 
+                success: true, 
+                assetId: assetItemId 
+            });
+        } else {
+            // إذا نجح الاتصال بالرقم 200 ولكن روبلوكس أرجعت هيكل غريب (مثل حالات الانتظار والـ Review)
+            return res.json({
+                success: false,
+                error: "Roblox accepted the upload but returned an unexpected format: " + JSON.stringify(uploadRes.data)
+            });
+        }
 
     } catch (error) {
         console.error(error);
+        let detailedError = error.message;
         if (error.response && error.response.data) {
-            console.error("Roblox API Error Details:", JSON.stringify(error.response.data));
+            detailedError = JSON.stringify(error.response.data);
         }
-        res.status(500).json({ success: false, error: error.message });
+        // إرسال تفاصيل الخطأ كاملة بدلاً من تفجير السيرفر بـ 500
+        res.json({ success: false, error: detailedError });
     }
 });
 
