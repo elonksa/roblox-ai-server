@@ -6,6 +6,9 @@ app.use(express.json());
 
 const ROBLOX_API_KEY = process.env.ROBLOX_API_KEY;
 
+// دالة مساعدة للانتظار ثوانٍ محددة
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 app.post('/generate-avatar-art', async (req, res) => {
     const { username, userId } = req.body;
     if (!username || !userId) return res.status(400).send('Missing data');
@@ -48,7 +51,7 @@ app.post('/generate-avatar-art', async (req, res) => {
         const footerBuffer = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf-8');
         const fullBody = Buffer.concat([headerBuffer, Buffer.from(imageBuffer.data), footerBuffer]);
 
-        // الرفع إلى روبلوكس Open Cloud
+        // الرفع المبدئي إلى روبلوكس للحصول على الـ Operation
         const uploadRes = await axios.post('https://apis.roblox.com/assets/v1/assets', fullBody, {
             headers: {
                 'x-api-key': ROBLOX_API_KEY,
@@ -56,22 +59,50 @@ app.post('/generate-avatar-art', async (req, res) => {
             }
         });
 
-        // فحص دقيق للبيانات الراجعة من روبلوكس لمنع الـ Unknown Error
-        if (uploadRes.data && (uploadRes.data.assetId || uploadRes.data.assetItemId)) {
-            const rawAssetId = uploadRes.data.assetId;
-            const assetItemId = uploadRes.data.assetItemId ? uploadRes.data.assetItemId.replace("AssetItems/", "") : rawAssetId;
-            
-            return res.json({ 
-                success: true, 
-                assetId: assetItemId 
-            });
-        } else {
-            // إذا نجح الاتصال بالرقم 200 ولكن روبلوكس أرجعت هيكل غريب (مثل حالات الانتظار والـ Review)
-            return res.json({
-                success: false,
-                error: "Roblox accepted the upload but returned an unexpected format: " + JSON.stringify(uploadRes.data)
-            });
+        // 🚀 نظام الانتظار الذكي (Polling):
+        if (uploadRes.data && uploadRes.data.path) {
+            const operationPath = uploadRes.data.path; // المسار مثل operations/xxxx
+            let isDone = false;
+            let operationData = null;
+            let attempts = 0;
+
+            // سيقوم السيرفر بالمحاولة والانتظار لمدة تصل إلى 10 ثوانٍ حتى تنتهي روبلوكس
+            while (!isDone && attempts < 5) {
+                await sleep(2000); // انتظر ثانيتين قبل كل فحص
+                attempts++;
+
+                const checkRes = await axios.get(`https://apis.roblox.com/assets/v1/${operationPath}`, {
+                    headers: { 'x-api-key': ROBLOX_API_KEY }
+                });
+
+                operationData = checkRes.data;
+                if (operationData && operationData.done) {
+                    isDone = true;
+                    break;
+                }
+            }
+
+            // إذا انتهت المعالجة بنجاح، نستخرج الـ assetId الفعلي ونرسله
+            if (isDone && operationData && operationData.response) {
+                const finalAssetId = operationData.response.assetId;
+                return res.json({ 
+                    success: true, 
+                    assetId: finalAssetId 
+                });
+            } else {
+                return res.json({
+                    success: false,
+                    error: "Roblox is taking too long to process the image. Please try again in a moment."
+                });
+            }
         }
+
+        // حالة احتياطية إذا أرجعت روبلوكس المعرف مباشرة
+        if (uploadRes.data && uploadRes.data.assetId) {
+            return res.json({ success: true, assetId: uploadRes.data.assetId });
+        }
+
+        res.json({ success: false, error: "Unexpected response from Roblox" });
 
     } catch (error) {
         console.error(error);
@@ -79,7 +110,6 @@ app.post('/generate-avatar-art', async (req, res) => {
         if (error.response && error.response.data) {
             detailedError = JSON.stringify(error.response.data);
         }
-        // إرسال تفاصيل الخطأ كاملة بدلاً من تفجير السيرفر بـ 500
         res.json({ success: false, error: detailedError });
     }
 });
