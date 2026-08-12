@@ -24,7 +24,7 @@ app.post('/generate-avatar-art', async (req, res) => {
         // جلب الصورة المولّدة كمصفوفة بيانات
         const imageBuffer = await axios.get(aiImageUrl, { responseType: 'arraybuffer' });
 
-        // 3. رفع الصورة أوتوماتيكياً إلى روبلوكس عبر Open Cloud API
+        // 3. رفع الصورة أوتوماتيكياً إلى روبلوكس عبر Open Cloud API (تم تعديل الرابط هنا لـ apis)
         const boundary = '----WebKitFormBoundary7MA4YWxkTrZu0gW';
         let payload = `--${boundary}\r\n`;
         payload += `Content-Disposition: form-data; name="request"\r\n\r\n`;
@@ -40,9 +40,11 @@ app.post('/generate-avatar-art', async (req, res) => {
 
         const headerBuffer = Buffer.from(payload, 'utf-8');
         const footerBuffer = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf-8');
+        // هنا دمجنا الـ buffer بشكل صحيح تماماً
         const fullBody = Buffer.concat([headerBuffer, Buffer.from(imageBuffer.data), footerBuffer]);
 
-        const uploadRes = await axios.post('https://api.roblox.com/assets/v1/assets', fullBody, {
+        // 🚀 تم تصحيح الرابط هنا إلى apis.roblox.com ليعمل مع الأنظمة السحابية الجديدة
+        const uploadRes = await axios.post('https://apis.roblox.com/assets/v1/assets', fullBody, {
             headers: {
                 'x-api-key': ROBLOX_API_KEY,
                 'Content-Type': `multipart/form-data; boundary=${boundary}`
