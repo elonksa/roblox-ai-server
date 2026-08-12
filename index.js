@@ -29,7 +29,6 @@ app.post('/generate-avatar-art', async (req, res) => {
         let payload = `--${boundary}\r\n`;
         payload += `Content-Disposition: form-data; name="request"\r\n\r\n`;
         
-        // تم تثبيت الآيدي الخاص بك هنا لمنع خطأ PERMISSION_DENIED
         payload += JSON.stringify({
             assetType: "Decal",
             displayName: `${username}_AI_Art`,
@@ -57,8 +56,14 @@ app.post('/generate-avatar-art', async (req, res) => {
             }
         });
 
-        const assetId = uploadRes.data.assetId;
-        res.json({ success: true, assetId: assetId });
+        // 🚀 هنا التعديل: استخراج المعرف الفعلي للمجسم (assetItemId) أو المعرف العام (assetId) وضمان إرسالهما
+        const rawAssetId = uploadRes.data.assetId;
+        const assetItemId = uploadRes.data.assetItemId ? uploadRes.data.assetItemId.replace("AssetItems/", "") : rawAssetId;
+
+        res.json({ 
+            success: true, 
+            assetId: assetItemId // نرسل الـ Item ID هنا مباشرة ليتعرف عليه سكربت الاستوديو فوراً
+        });
 
     } catch (error) {
         console.error(error);
